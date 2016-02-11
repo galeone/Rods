@@ -107,14 +107,12 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois) {
 }
 
 int main() {
-  const char images[15][18] = {/*
+  const char images[15][18] = {
       "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
       "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
       "./rods/TESI44.BMP", "./rods/TESI47.BMP", "./rods/TESI48.BMP",
-      "./rods/TESI49.BMP",
-                             */
-                               "./rods/TESI50.BMP", "./rods/TESI51.BMP" /*,
-      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"*/};
+      "./rods/TESI49.BMP", "./rods/TESI50.BMP", "./rods/TESI51.BMP",
+      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
 
   for (auto image : images) {
     if (strlen(image) == 0) {
@@ -215,7 +213,7 @@ int main() {
     }
 
     // Visualize the final image
-    show(dst);
+    // show(dst);
 
     for (Rod& rod : tree) {
       cout << rod << endl;
@@ -232,6 +230,18 @@ int main() {
       for (Hole& hole : rod.holes) {
         circle(rois, hole.getCenter(), 1, Scalar(255), 2);
       }
+
+      Point2d q = rod.getPosition(), p = Point2f(eigenVect[0].x * eigenVal[0],
+                                                 eigenVect[0].y * eigenVal[0]);
+      double angle;
+      double hypotenuse;
+      angle = atan2((double)p.y - q.y, (double)p.x - q.x);  // angle in radians
+      hypotenuse =
+          sqrt((double)(p.y - q.y) * (p.y - q.y) + (p.x - q.x) * (p.x - q.x));
+      float scale = 1;
+      q.x = (int)(p.x - scale * hypotenuse * cos(angle));
+      q.y = (int)(p.y - scale * hypotenuse * sin(angle));
+      line(rois, p, q, Scalar(255), 1, CV_AA);
     }
 
     // show(bw_work, string(image + string("a")));
