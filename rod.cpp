@@ -26,18 +26,12 @@ Rod::Rod(vector<Point>& contour, Size size) {
     _eigen_val[i] = pca_analysis.eigenvalues.at<double>(0, i);
   }
 
-  // Store the orientation
-  _angle = atan2(_eigen_vecs[0].y, _eigen_vecs[0].x) * 180 /
-           CV_PI;  // angle in degree
+  // Store the orientation wrt the horizontal axis, modulus 18
+  //(measured in degree)
+  _angle = atan2(_eigen_vecs[0].y, _eigen_vecs[0].x) * 180 / CV_PI;
   _angle = fmod(_angle, 180);
-  if (_angle < 0) {
-    _angle = -_angle;
-  }
+  _angle = fmod(180 - _angle, 180);
 
-  /*  Moments m = moments(_contour, false);
-    _angle = (-(atan((2 * m.mu11) / (m.mu02 - m.mu20)) * 180 / CV_PI) / 2);
-    _angle = (_angle < 0) ? -1 * _angle + 90 : _angle;
-  */
   // Store the MER
   _mer = minAreaRect(_contour);
 
