@@ -45,7 +45,11 @@ void edge(const Mat1b& input, Mat1b& output, double otsuThreshold) {
 #define ROD_AREA_THRESHOLD_LOW 1500
 #define ROD_AREA_THRESHOLD_UP 6000
 
-vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois) {
+// builTree returns a tree structure of rods, analyzing the bw image
+// It draws detected rods on rois.
+// If withInvalid is passed and setted to true, it returns even rods invalid
+// (that are connected) and considered as a whole ros
+vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
   vector<Rod> ret;
   ret.reserve(4);
   // Find all the contours in the thresholded image
@@ -69,16 +73,24 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois) {
     // Calculate the area of each contour
     double area = contourArea(contours[i]);
     int fatherPosition = hierarchy[i][3];
-    // does not have a father and its area passes the thresold
+    // does not have a father and its area passes the thresold(s)
     bool isRoot = false;
     bool isLeaf = false;
     if (fatherPosition < 0) {
-      isRoot = area > ROD_AREA_THRESHOLD_LOW && area < ROD_AREA_THRESHOLD_UP;
+      if (withInvalid) {
+        isRoot = area > ROD_AREA_THRESHOLD_LOW;
+      } else {
+        isRoot = area > ROD_AREA_THRESHOLD_LOW && area < ROD_AREA_THRESHOLD_UP;
+      }
     } else {
-      // has a father and its father is a rod (passes the threshold)
+      // has a father and its father is a rod (passes the threshold(s))
       auto fatherArea = contourArea(contours[fatherPosition]);
-      isLeaf = fatherArea > ROD_AREA_THRESHOLD_LOW &&
-               fatherArea < ROD_AREA_THRESHOLD_UP;
+      if (withInvalid) {
+        isLeaf = fatherArea > ROD_AREA_THRESHOLD_LOW;
+      } else {
+        isLeaf = fatherArea > ROD_AREA_THRESHOLD_LOW &&
+                 fatherArea < ROD_AREA_THRESHOLD_UP;
+      }
     }
 
     if (isRoot || isLeaf) {
@@ -128,11 +140,12 @@ void drawAxis(Mat& img,
 
 int main() {
   const char images[15][18] = {
-      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
-      "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
-      "./rods/TESI44.BMP", "./rods/TESI47.BMP", "./rods/TESI48.BMP",
-      "./rods/TESI49.BMP", "./rods/TESI50.BMP", "./rods/TESI51.BMP",
-      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
+      //      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
+      //      "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
+      //      "./rods/TESI44.BMP", "./rods/TESI47.BMP",
+      //      "./rods/TESI48.BMP","./rods/TESI49.BMP",
+      "./rods/TESI50.BMP", "./rods/TESI51.BMP"};
+  //"./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
 
   for (auto image : images) {
     if (strlen(image) == 0) {
@@ -166,68 +179,126 @@ int main() {
       drawContours(bw_work, fakeHierarchy, 0, Scalar(0), CV_FILLED);
     }
 
-    // Separate the rods in the image, using the watershed algorithm
+    // It there are other objects, extract touching rods
+    if (countNonZero(bw_work) > 0) {
+      // Separate the rods in the image, using the watershed algorithm
 
-    // First erode the binarized image the increase the degree of separation
-    // between objects
-    Mat1b bw_erosed;
-    Mat dist;
-    bw_work.copyTo(bw_erosed);
+      // First erode the binarized image the increase the degree of separation
+      // between objects
+      // Separe touching objects
+      Mat element = getStructuringElement(MORPH_CROSS, Size(3, 3));
+      Mat1b bw_erosed;
+      morphologyEx(bw_work, bw_erosed, MORPH_ERODE, element, Point(-1, -1), 1);
 
-    // Separe touching objects
-    Mat element = getStructuringElement(MORPH_CROSS, Size(3, 3));
-    morphologyEx(bw_work, bw_erosed, MORPH_ERODE, element, Point(-1, -1), 2);
+      // Apply the distance transform to the erosed image to get an image
+      // with a distribution of pixel in function their distance
+      Mat dist;
+      distanceTransform(bw_erosed, dist, CV_DIST_L2, 3);
 
-    // Apply the distance transform to the erosed image to get an image
-    // with a distribution of pixel in function their distance
-    distanceTransform(bw_erosed, dist, CV_DIST_L2, 3);
+      // Normalize the distance image between [0,1] and threshold it with a
+      // threshold of 0.5. Than dilate to make the rods bigger
+      normalize(dist, dist, 0, 1, NORM_MINMAX);
+      threshold(dist, dist, 0.5, 1, CV_THRESH_BINARY);
 
-    // Normalize the distance image between [0,1] and threshold it with a
-    // threshold of 0.5. Than dilate to make the rods bigger
-    normalize(dist, dist, 0, 1, NORM_MINMAX);
-    show(dist);
-    threshold(dist, dist, 0.5, 1, CV_THRESH_BINARY);
-    show(dist);
+      // Convert the thresholded distance image back to a uchar matrix
+      // Invert colour and binarize the image to get object white and non-object
+      // black
+      Mat dist_8u;
+      dist.convertTo(dist_8u, CV_8U);
+      normalize(dist_8u, dist_8u, 0, 255, NORM_MINMAX);
+      show(dist_8u, "dconv");
+      waitKey(0);
 
-    // Convert the thresholded distance image back to a uchar matrix
-    // Invert colour and binarize the image to get object white and non-object
-    // black
-    Mat dist_8u;
-    dist.convertTo(dist_8u, CV_8U);
-
-    // Extract contours of the "objects" (the skeleton of the rods)
-    // to get the seeds for the whatershed algoritm
-    vector<vector<Point>> contours;
-    findContours(dist_8u, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-    if (contours.size() > 0) {
-      // Create the marker image for the watershed algorithm
-      Mat markers = Mat::zeros(dist.size(), CV_32SC1);
-
-      // increase the size of every contour, along the major axis direction
-      for (size_t i = 0; i < contours.size(); i++) {
-        // fake rod
-        Rod rod(contours[i], gray.size());
+      // Extract contours of the "objects" (the result of the distance
+      // transform)
+      // to get the seeds for the whatershed algoritm
+      vector<vector<Point>> dt_contours;
+      Mat1b dist_8u_work;
+      dist_8u.copyTo(dist_8u_work);
+      findContours(dist_8u_work, dt_contours, CV_RETR_EXTERNAL,
+                   CV_CHAIN_APPROX_NONE);
+      /*
+       * WARNING: HIGH LEVEL OF MAGIC BELOW
+       * Lets improve the whatershed segmentation performance exploting the
+       * elongation of the rods.
+       * In fact, a rod has an elongated body (where's the center of mass) and
+       * ends with 1 or 2 holes that have no mass.
+       * Therfore, to increase the chache of classify the hole perimeter as part
+       * of the right rod, we draw a line that starts from the center of mass
+       * (where the distance transform has its max value) and ends on the
+       * opposite side of the detected hole along the direction of the rod
+       */
+      Mat1b rois;
+      vector<Rod> blobs = buildTree(bw_work, rois, true);
+      // Extract every hole of evry blogs (we have no idea how many invalid rods
+      // are present in the image)
+      vector<Hole> holes;
+      for (Rod rod : blobs) {
+        holes.insert(holes.end(), rod.holes.begin(), rod.holes.end());
+      }
+      for (size_t i = 0; i < dt_contours.size(); i++) {
+        // fake rod (to compute PCA)
+        Rod rod(dt_contours[i], gray.size());
         vector<Point2d> eigen_vecs = rod.getEigenVectors();
         vector<double> eigen_val = rod.getEigenValues();
 
-        // p1 shows the direction along the mayor axis. Is the distance scaled
-        // down by a factor of 0.02
+        // p1 shows the direction along the mayor axis.
         Point center = rod.getPosition();
-        Point eigenPoint =
-            Point(static_cast<int>(eigen_vecs[0].x * eigen_val[0]),
-                  static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
+        Point2i eigenPoint =
+            Point2i(static_cast<int>(eigen_vecs[0].x * eigen_val[0]),
+                    static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
+        Point p1 = center - eigenPoint, p2 = center + eigenPoint;
 
-        Point p1 = center - 0.07 * eigenPoint, p2 = center + 0.04 * eigenPoint;
-        line(dist_8u, center, p1, Scalar(255), 8);
-        line(dist_8u, center, p2, Scalar(255), 8);
-        morphologyEx(dist_8u,dist_8u,MORPH_DILATE,element, Point(-1,-1));
+        // If there's a hole along the direction of the greatest variance
+        // that hole belogs to the current rod, thus must be connected
+        Mat1b mainDirection = Mat1b::zeros(bw_work.size());
+        // draw the lines (majox axis)
+        line(mainDirection, center, p1, Scalar(255), 8);
+        line(mainDirection, center, p2, Scalar(255), 8);
+        // draw the current contour
+        drawContours(mainDirection, dt_contours, i, Scalar(255));
+
+        show(mainDirection, "asd");
+        waitKey(0);
+
+        // TODO: creare una lista di holes candidati (quelli che hanno
+        // intersezione)
+        // parsare la lista, disegnare e collegare solo quello a distanza minore
+        // dal centro
+        for (Hole hole : holes) {
+          // look for an intersection of the line with the current hole
+          Mat1b holeImg = Mat1b::zeros(bw_work.size());
+          circle(holeImg, hole.getCenter(), hole.getDiameter() / 2, Scalar(255),
+                 CV_FILLED);
+          Mat1b intersection;
+          cv::bitwise_and(mainDirection, holeImg, intersection);
+          if (countNonZero(intersection) > 0) {  // if an intersection exists
+            // update dist_8u, connecting this circle with the currencta
+
+            // remove actual contour
+            drawContours(dist_8u, dt_contours, i, Scalar(0), CV_FILLED);
+
+            // draw a line that connects the body with the holes
+            line(dist_8u, center, hole.getCenter(), Scalar(255), 8);
+            circle(dist_8u, hole.getCenter(), hole.getDiameter() / 1.5,
+                   Scalar(255), CV_FILLED);
+          }
+        }
+        show(dist_8u, "distance + linea");
+        waitKey(0);
       }
 
-      findContours(dist_8u, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+      // find contours again, to merge touching regions into one big region
+      findContours(dist_8u, dt_contours, CV_RETR_EXTERNAL,
+                   CV_CHAIN_APPROX_NONE);
+
+      // Create the marker image for the watershed algorithm
+      Mat markers = Mat::zeros(dist.size(), CV_32SC1);
       // Draw the foreground markers
-      for (size_t i = 0; i < contours.size(); i++) {
+      for (size_t i = 0; i < dt_contours.size(); i++) {
         Scalar color = Scalar::all(static_cast<int>(i) + 1);
-        drawContours(markers, contours, static_cast<int>(i), color, CV_FILLED);
+        drawContours(markers, dt_contours, static_cast<int>(i), color,
+                     CV_FILLED);
       }
 
       // Draw the background marker
@@ -247,7 +318,7 @@ int main() {
 
       // Generate random colors
       vector<Vec3b> colors;
-      for (size_t i = 0; i < contours.size(); i++) {
+      for (size_t i = 0; i < dt_contours.size(); i++) {
         int b = theRNG().uniform(0, 255);
         int g = theRNG().uniform(0, 255);
         int r = theRNG().uniform(0, 255);
@@ -262,7 +333,7 @@ int main() {
       for (int i = 0; i < markers.rows; i++) {
         for (int j = 0; j < markers.cols; j++) {
           int index = markers.at<int>(i, j);
-          if (index > 0 && index <= static_cast<int>(contours.size()))
+          if (index > 0 && index <= static_cast<int>(dt_contours.size()))
             dst.at<Vec3b>(i, j) = colors[index - 1];
           else
             dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
@@ -310,7 +381,7 @@ int main() {
       // drawAxis(rois, center, p2, Scalar(255), 5);
     }
 
-    // show(rois, string(image));
+    show(rois, string(image));
   }
 
   waitKey(0);

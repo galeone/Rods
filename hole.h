@@ -2,6 +2,7 @@
 #define HOLE_H
 
 #include <vector>
+#include <iostream>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -12,11 +13,11 @@ using namespace cv;
 class Hole {
  public:
   Hole(vector<Point>& contour);
-  Point2f getCenter();
+  Point2i getCenter();
   double  getDiameter();
  private:
   vector<Point> _contour;
-  Point2f _center;
+  Point2i _center;
   double _diameter;
 };
 

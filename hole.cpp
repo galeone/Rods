@@ -5,15 +5,14 @@ Hole::Hole(vector<Point>& contour) {
 
   // Find the center as a ratio of moments
   Moments mu = moments(_contour, false);
-  _center = Point2f(mu.m10 / mu.m00, mu.m01 / mu.m00);
-  Point2i integerCenter(static_cast<int>(_center.x),
-                        static_cast<int>(_center.y));
 
-  // Calculate the radius as the average distance from every contour point and
-  // the center
+  _center = Point2i(static_cast<int>(mu.m10 / mu.m00),
+                    static_cast<int>(mu.m01 / mu.m00));
+  // Calculate the radius as the average distance from
+  // every contour point and the center
   double radius = 0;
   for (Point p : contour) {
-    radius += norm(p - integerCenter);
+    radius += norm(p - _center);
   }
   radius /= _contour.size();
 
@@ -21,7 +20,7 @@ Hole::Hole(vector<Point>& contour) {
   _diameter = radius * 2;
 }
 
-Point2f Hole::getCenter() {
+Point2i Hole::getCenter() {
   return _center;
 }
 

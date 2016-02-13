@@ -11,6 +11,7 @@
 #include <opencv2/imgproc.hpp>
 #include "hole.h"
 #include <cmath>
+#include <iomanip>
 
 using namespace std;
 using namespace cv;
@@ -42,6 +43,7 @@ class Rod {
 };
 
 inline ostream& operator<<(ostream& ss, Rod& rod) {
+  ss << setprecision(2) << fixed;
   ss << "[!] Type: " << rod.getType() << "\n";
   ss << "[!] Baricenter: " << rod.getPosition() << "\n";
   ss << "[!] Orientation: " << rod.getOrientation() << "\n";
