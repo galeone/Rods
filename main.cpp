@@ -52,12 +52,15 @@ void edge(const Mat1b& input, Mat1b& output, double otsuThreshold) {
 vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
   vector<Rod> ret;
   ret.reserve(4);
-  // Find all the contours in the thresholded image
+  // Find all the contours in the binary image
   vector<Vec4i> hierarchy;
   vector<vector<Point>> contours;
 
   Mat1b bw_work;
   bw.copyTo(bw_work);
+
+  show(bw_work, "bw");
+  waitKey(0);
 
   findContours(bw_work, contours, hierarchy, CV_RETR_TREE,
                CV_CHAIN_APPROX_NONE);
@@ -101,6 +104,9 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
       }
       // Draw each contour only for visualisation purposes
       drawContours(rois, contours, static_cast<int>(i), Scalar(255), 1, 8);
+
+      show(rois, "???");
+      waitKey(0);
     }
   }
 
@@ -113,6 +119,11 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
     ret.push_back(rod);
   }
   return ret;
+}
+
+vector<Rod> buildTree(const Mat1b& bw, bool withInvalid = false) {
+  Mat1b _;
+  return buildTree(bw, _, withInvalid);
 }
 
 void drawAxis(Mat& img,
@@ -165,8 +176,6 @@ int main() {
 
     // Find connected components of not touching rods
     Mat1b rois;
-    show(bw, "bw");
-    waitKey(0);
     vector<Rod> tree = buildTree(bw, rois);
 
     // Remove every detected rods from the work image
@@ -225,8 +234,7 @@ int main() {
        * (where the distance transform has its max value) and ends on the
        * opposite side of the detected hole along the direction of the rod
        */
-      Mat1b rois;
-      vector<Rod> blobs = buildTree(bw_work, rois, true);
+      vector<Rod> blobs = buildTree(bw_work, true);
       // Extract every hole of evry blogs (we have no idea how many invalid rods
       // are present in the image)
       vector<Hole> holes;
@@ -333,8 +341,6 @@ int main() {
 
             circle(dist_8u, hole.getCenter(), minDistance, Scalar(255),
                    CV_FILLED);
-            show(dist_8u, "distance + linea");
-            // waitKey(0);
           }
         }
       }
@@ -356,8 +362,6 @@ int main() {
         // Draw the background marker
         circle(markers, Point(5, 5), 3, CV_RGB(255, 255, 255), CV_FILLED);
 
-        show(markers * 10000);
-
         // Perform the watershed algorithm
         // convert bw_work in a color image (required by the algorithm)
         Mat color;
@@ -369,8 +373,7 @@ int main() {
         markers.convertTo(mark, CV_8UC1);
         bitwise_not(mark, mark);
 
-        // Generate random colors
-        // we don't need a classical usage of the watershed transform (thats
+        // we don't need a classical usage of the watershed transform (that's
         // colored)
         // we use watershed transfrom to segmentate objects. Thus, we set
         // foreground objects in white and background in black
@@ -378,33 +381,51 @@ int main() {
         // Create the result image
         Mat1b dst_bw = Mat1b::zeros(markers.size());
 
-        // Fill labeled objects with random colors
+        // Fill labeled objects
+        // identify every rod with a color = 255 - index
+        set<uchar> labels;
         for (int i = 0; i < markers.rows; i++) {
           for (int j = 0; j < markers.cols; j++) {
             int index = markers.at<int>(i, j);
-            if (index > 0 && index <= static_cast<int>(dt_contours.size()))
-              dst_bw.at<uchar>(i, j) = 255;
-            else
+            if (index > 0 && index <= static_cast<int>(dt_contours.size())) {
+              dst_bw.at<uchar>(i, j) = 255 - index;
+              labels.insert(static_cast<uchar>(index));
+            } else {
               dst_bw.at<uchar>(i, j) = 0;
+            }
           }
         }
 
-        // draw the holes into the image (holes are background, thus black
-        // color)
-        for (Hole hole : holes) {
-          circle(dst_bw, hole.getCenter(), hole.getDiameter() / 2, Scalar(0),
-                 CV_FILLED);
+        // treat every label separately (thus we can use findContours in
+        // buildTree without any problem)
+        for (uchar label : labels) {
+          Mat1b onlyOne;
+          dst_bw.copyTo(onlyOne);
+
+          for (int i = 0; i < onlyOne.rows; i++) {
+            for (int j = 0; j < onlyOne.cols; j++) {
+              if (onlyOne.at<uchar>(i, j) != 255 - label) {
+                onlyOne.at<uchar>(i, j) = 0;
+              }
+            }
+          }
+
+          show(onlyOne, "flfllf");
+
+          // draw the holes into the image (holes are background: black color)
+          for (Hole hole : holes) {
+            fillConvexPoly(onlyOne, hole.getContour(), Scalar(0));
+          }
+
+          // Find contours works only if objects are far from each other
+          // one px of contour is not enough
+
+          // Finally
+          Mat1b nestedRoi;
+          vector<Rod> touching = buildTree(onlyOne, nestedRoi);
+          tree.insert(tree.end(), touching.begin(), touching.end());
+          rois += nestedRoi;
         }
-
-        show(dst_bw);
-        waitKey(0);
-
-        // Finally
-        Mat1b rois;
-        vector<Rod> touching = buildTree(dst_bw, rois);
-        tree.insert(tree.end(), touching.begin(), touching.end());
-        show(rois);
-        waitKey(0);
       }
     }
 

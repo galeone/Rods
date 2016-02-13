@@ -14,7 +14,9 @@ class Hole {
  public:
   Hole(vector<Point>& contour);
   Point2i getCenter();
-  double  getDiameter();
+  double getDiameter();
+  vector<Point> getContour();
+
  private:
   vector<Point> _contour;
   Point2i _center;

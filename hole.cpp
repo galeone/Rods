@@ -27,3 +27,7 @@ Point2i Hole::getCenter() {
 double Hole::getDiameter() {
   return _diameter;
 }
+
+vector<Point> Hole::getContour() {
+  return _contour;
+}
