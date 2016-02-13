@@ -140,11 +140,11 @@ void drawAxis(Mat& img,
 
 int main() {
   const char images[15][18] = {
-      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
+ /*     "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
       "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
       "./rods/TESI44.BMP", "./rods/TESI47.BMP", "./rods/TESI48.BMP",
-      "./rods/TESI49.BMP", "./rods/TESI50.BMP", "./rods/TESI51.BMP",
-      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
+      "./rods/TESI49.BMP", */"./rods/TESI50.BMP", "./rods/TESI51.BMP"};/*
+      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};*/
 
   for (auto image : images) {
     if (strlen(image) == 0) {
@@ -157,7 +157,7 @@ int main() {
 
     // Binaryze image
     Mat1b binary;
-    double otsuThreshold = binarize(gray, binary);
+    binarize(gray, binary);
 
     // Remove noise
     Mat1b bw;
@@ -165,6 +165,8 @@ int main() {
 
     // Find connected components of not touching rods
     Mat1b rois;
+    show(bw, "bw");
+    waitKey(0);
     vector<Rod> tree = buildTree(bw, rois);
 
     // Remove every detected rods from the work image
@@ -368,31 +370,40 @@ int main() {
         bitwise_not(mark, mark);
 
         // Generate random colors
-        vector<Vec3b> colors;
-        for (size_t i = 0; i < dt_contours.size(); i++) {
-          int b = theRNG().uniform(0, 255);
-          int g = theRNG().uniform(0, 255);
-          int r = theRNG().uniform(0, 255);
-
-          colors.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
-        }
+        // we don't need a classical usage of the watershed transform (thats
+        // colored)
+        // we use watershed transfrom to segmentate objects. Thus, we set
+        // foreground objects in white and background in black
 
         // Create the result image
-        Mat dst = Mat::zeros(markers.size(), CV_8UC3);
+        Mat1b dst_bw = Mat1b::zeros(markers.size());
 
         // Fill labeled objects with random colors
         for (int i = 0; i < markers.rows; i++) {
           for (int j = 0; j < markers.cols; j++) {
             int index = markers.at<int>(i, j);
             if (index > 0 && index <= static_cast<int>(dt_contours.size()))
-              dst.at<Vec3b>(i, j) = colors[index - 1];
+              dst_bw.at<uchar>(i, j) = 255;
             else
-              dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+              dst_bw.at<uchar>(i, j) = 0;
           }
         }
 
-        // Visualize the final image
-        show(dst);
+        // draw the holes into the image (holes are background, thus black
+        // color)
+        for (Hole hole : holes) {
+          circle(dst_bw, hole.getCenter(), hole.getDiameter() / 2, Scalar(0),
+                 CV_FILLED);
+        }
+
+        show(dst_bw);
+        waitKey(0);
+
+        // Finally
+        Mat1b rois;
+        vector<Rod> touching = buildTree(dst_bw, rois);
+        tree.insert(tree.end(), touching.begin(), touching.end());
+        show(rois);
         waitKey(0);
       }
     }
