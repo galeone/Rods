@@ -140,12 +140,11 @@ void drawAxis(Mat& img,
 
 int main() {
   const char images[15][18] = {
-      //      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
-      //      "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
-      //      "./rods/TESI44.BMP", "./rods/TESI47.BMP",
-      //      "./rods/TESI48.BMP","./rods/TESI49.BMP",
-      "./rods/TESI50.BMP", "./rods/TESI51.BMP"};
-  //"./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
+      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
+      "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
+      "./rods/TESI44.BMP", "./rods/TESI47.BMP", "./rods/TESI48.BMP",
+      "./rods/TESI49.BMP", "./rods/TESI50.BMP", "./rods/TESI51.BMP",
+      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
 
   for (auto image : images) {
     if (strlen(image) == 0) {
@@ -158,7 +157,7 @@ int main() {
 
     // Binaryze image
     Mat1b binary;
-    binarize(gray, binary);
+    double otsuThreshold = binarize(gray, binary);
 
     // Remove noise
     Mat1b bw;
@@ -201,17 +200,13 @@ int main() {
       threshold(dist, dist, 0.5, 1, CV_THRESH_BINARY);
 
       // Convert the thresholded distance image back to a uchar matrix
-      // Invert colour and binarize the image to get object white and non-object
-      // black
+      // and normalize its values between 0 and 255
       Mat dist_8u;
       dist.convertTo(dist_8u, CV_8U);
       normalize(dist_8u, dist_8u, 0, 255, NORM_MINMAX);
-      show(dist_8u, "dconv");
-      waitKey(0);
 
       // Extract contours of the "objects" (the result of the distance
-      // transform)
-      // to get the seeds for the whatershed algoritm
+      // transform) to get the seeds for the whatershed algoritm
       vector<vector<Point>> dt_contours;
       Mat1b dist_8u_work;
       dist_8u.copyTo(dist_8u_work);
@@ -247,101 +242,159 @@ int main() {
         Point2i eigenPoint =
             Point2i(static_cast<int>(eigen_vecs[0].x * eigen_val[0]),
                     static_cast<int>(eigen_vecs[0].y * eigen_val[0]));
-        Point p1 = center - eigenPoint, p2 = center + eigenPoint;
 
-        // If there's a hole along the direction of the greatest variance
-        // that hole belogs to the current rod, thus must be connected
-        Mat1b mainDirection = Mat1b::zeros(bw_work.size());
-        // draw the lines (majox axis)
-        line(mainDirection, center, p1, Scalar(255), 8);
-        line(mainDirection, center, p2, Scalar(255), 8);
-        // draw the current contour
-        drawContours(mainDirection, dt_contours, i, Scalar(255));
+        // remove the actual contour from the distance transform image
+        drawContours(dist_8u, dt_contours, i, Scalar(0), CV_FILLED);
 
-        show(mainDirection, "asd");
-        waitKey(0);
+        // Search on the posive and negative side of major axis
 
-        // TODO: creare una lista di holes candidati (quelli che hanno
-        // intersezione)
-        // parsare la lista, disegnare e collegare solo quello a distanza minore
-        // dal centro
-        for (Hole hole : holes) {
-          // look for an intersection of the line with the current hole
-          Mat1b holeImg = Mat1b::zeros(bw_work.size());
-          circle(holeImg, hole.getCenter(), hole.getDiameter() / 2, Scalar(255),
-                 CV_FILLED);
-          Mat1b intersection;
-          cv::bitwise_and(mainDirection, holeImg, intersection);
-          if (countNonZero(intersection) > 0) {  // if an intersection exists
-            // update dist_8u, connecting this circle with the currencta
+        // it will be replaced with a strong representation.
+        // If at the end of the following loop, dist_8u is empty, no rods
+        // are present in the image.
+        // The following loop search for an intersection along the mayor axis of
+        // the "rod" and the holes present in the "rod".
+        // If an intersection is found, the "rod" is a rod.
+        for (int j = 0, sign = -1; j < 2; ++j, sign += 2) {
+          Point p1 = center + sign * eigenPoint;
 
-            // remove actual contour
-            drawContours(dist_8u, dt_contours, i, Scalar(0), CV_FILLED);
+          // If there's a hole along the direction of the greatest variance
+          // that hole belogs to the current rod, thus must be connected
+          Mat1b mainDirection = Mat1b::zeros(bw_work.size());
+          // draw the lines (majox axis)
+          line(mainDirection, center, p1, Scalar(255), 1);
+          // draw the current contour
+          drawContours(mainDirection, dt_contours, i, Scalar(255));
+
+          // vector of candidates hole along the main direction (sign oriented)
+          vector<pair<Hole, double>> candidates;
+          candidates.reserve(holes.size());
+          for (Hole& hole : holes) {
+            // look for an intersection of the line with the current hole
+            Mat1b holeImg = Mat1b::zeros(bw_work.size());
+            circle(holeImg, hole.getCenter(), hole.getDiameter() / 2,
+                   Scalar(255), CV_FILLED);
+            Mat1b intersection;
+            bitwise_and(mainDirection, holeImg, intersection);
+            if (countNonZero(intersection) > 0) {  // if an intersection exists
+              // add it to the candidate list
+              candidates.push_back(
+                  make_pair(hole, norm(center - hole.getCenter())));
+            }
+          }
+          auto nearestIT =
+              min_element(candidates.begin(), candidates.end(),
+                          [](pair<Hole, double>& a, pair<Hole, double>& b) {
+                            return a.second < b.second;
+                          });
+
+          if (nearestIT != candidates.end()) {
+            Hole hole = (*nearestIT).first;
+            // update dist_8u, connecting this circle with the current body rod
 
             // draw a line that connects the body with the holes
-            line(dist_8u, center, hole.getCenter(), Scalar(255), 8);
-            circle(dist_8u, hole.getCenter(), hole.getDiameter() / 1.5,
-                   Scalar(255), CV_FILLED);
+            // the line is the new body rod
+            line(dist_8u, center, hole.getCenter(), Scalar(255),
+                 static_cast<int>(floor(hole.getDiameter() / 2)));
+            // In order to improve the rod detection, cirles must be the same
+            // size of the OUTER circle
+            // the hole is the inner circle. Thus we have to estimate the real
+            // diameter
+            // Since we have the center of the circle, we can compute the
+            // distance from every point of the border of the rod from the
+            // circle.
+            // The minimum distance is the outer diameter
+
+            // first we have to extract from the blob vector the contours of
+            // every blob in the image
+            vector<vector<Point>> blobContours;
+            blobContours.reserve(blobs.size());
+            for (Rod blob : blobs) {
+              blobContours.push_back(blob.getContour());
+            }
+
+            // now we can merge the points in a vector of points
+            vector<Point> fullContour;
+            for (vector<Point> pts : blobContours) {
+              fullContour.insert(fullContour.end(), pts.begin(), pts.end());
+            }
+
+            // now we can search for the point in the vector with a minimum
+            // distance from the center of the hole
+            int minDistance = INT_MAX;
+            auto holeCenter = hole.getCenter();
+            for (const auto& p : fullContour) {
+              int dist = static_cast<int>(norm(p - holeCenter));
+              if (dist < minDistance) {
+                minDistance = dist;
+              }
+            }
+
+            circle(dist_8u, hole.getCenter(), minDistance, Scalar(255),
+                   CV_FILLED);
+            show(dist_8u, "distance + linea");
+            // waitKey(0);
           }
         }
-        show(dist_8u, "distance + linea");
+      }
+
+      if (countNonZero(dist_8u) > 0) {
+        // find contours again, to merge touching regions into one big region
+        findContours(dist_8u, dt_contours, CV_RETR_EXTERNAL,
+                     CV_CHAIN_APPROX_NONE);
+
+        // Create the marker image for the watershed algorithm
+        Mat markers = Mat::zeros(dist.size(), CV_32SC1);
+        // Draw the foreground markers
+        for (size_t i = 0; i < dt_contours.size(); i++) {
+          Scalar color = Scalar::all(static_cast<int>(i) + 1);
+          drawContours(markers, dt_contours, static_cast<int>(i), color,
+                       CV_FILLED);
+        }
+
+        // Draw the background marker
+        circle(markers, Point(5, 5), 3, CV_RGB(255, 255, 255), CV_FILLED);
+
+        show(markers * 10000);
+
+        // Perform the watershed algorithm
+        // convert bw_work in a color image (required by the algorithm)
+        Mat color;
+
+        cvtColor(gray, color, CV_GRAY2BGR);
+        watershed(color, markers);
+
+        Mat mark = Mat::zeros(markers.size(), CV_8UC1);
+        markers.convertTo(mark, CV_8UC1);
+        bitwise_not(mark, mark);
+
+        // Generate random colors
+        vector<Vec3b> colors;
+        for (size_t i = 0; i < dt_contours.size(); i++) {
+          int b = theRNG().uniform(0, 255);
+          int g = theRNG().uniform(0, 255);
+          int r = theRNG().uniform(0, 255);
+
+          colors.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
+        }
+
+        // Create the result image
+        Mat dst = Mat::zeros(markers.size(), CV_8UC3);
+
+        // Fill labeled objects with random colors
+        for (int i = 0; i < markers.rows; i++) {
+          for (int j = 0; j < markers.cols; j++) {
+            int index = markers.at<int>(i, j);
+            if (index > 0 && index <= static_cast<int>(dt_contours.size()))
+              dst.at<Vec3b>(i, j) = colors[index - 1];
+            else
+              dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
+          }
+        }
+
+        // Visualize the final image
+        show(dst);
         waitKey(0);
       }
-
-      // find contours again, to merge touching regions into one big region
-      findContours(dist_8u, dt_contours, CV_RETR_EXTERNAL,
-                   CV_CHAIN_APPROX_NONE);
-
-      // Create the marker image for the watershed algorithm
-      Mat markers = Mat::zeros(dist.size(), CV_32SC1);
-      // Draw the foreground markers
-      for (size_t i = 0; i < dt_contours.size(); i++) {
-        Scalar color = Scalar::all(static_cast<int>(i) + 1);
-        drawContours(markers, dt_contours, static_cast<int>(i), color,
-                     CV_FILLED);
-      }
-
-      // Draw the background marker
-      circle(markers, Point(5, 5), 3, CV_RGB(255, 255, 255), CV_FILLED);
-
-      show(markers * 10000);
-
-      // Perform the watershed algorithm
-      // convert bw_work in a color image (required by the algorithm)
-      Mat color;
-      cvtColor(gray, color, CV_GRAY2BGR);
-      watershed(color, markers);
-
-      Mat mark = Mat::zeros(markers.size(), CV_8UC1);
-      markers.convertTo(mark, CV_8UC1);
-      bitwise_not(mark, mark);
-
-      // Generate random colors
-      vector<Vec3b> colors;
-      for (size_t i = 0; i < dt_contours.size(); i++) {
-        int b = theRNG().uniform(0, 255);
-        int g = theRNG().uniform(0, 255);
-        int r = theRNG().uniform(0, 255);
-
-        colors.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
-      }
-
-      // Create the result image
-      Mat dst = Mat::zeros(markers.size(), CV_8UC3);
-
-      // Fill labeled objects with random colors
-      for (int i = 0; i < markers.rows; i++) {
-        for (int j = 0; j < markers.cols; j++) {
-          int index = markers.at<int>(i, j);
-          if (index > 0 && index <= static_cast<int>(dt_contours.size()))
-            dst.at<Vec3b>(i, j) = colors[index - 1];
-          else
-            dst.at<Vec3b>(i, j) = Vec3b(0, 0, 0);
-        }
-      }
-
-      // Visualize the final image
-      show(dst);
     }
 
     for (Rod& rod : tree) {
@@ -378,7 +431,6 @@ int main() {
 
       // Draw major axis
       drawAxis(rois, center, p1, Scalar(255), 1);
-      // drawAxis(rois, center, p2, Scalar(255), 5);
     }
 
     show(rois, string(image));
