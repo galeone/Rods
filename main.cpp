@@ -37,10 +37,6 @@ void filter(const Mat1b& input, Mat1b& output) {
   medianBlur(output, output, 3);
 }
 
-void edge(const Mat1b& input, Mat1b& output, double otsuThreshold) {
-  Canny(input, output, 0.5 * otsuThreshold, otsuThreshold);
-}
-
 // Experimental area thresholds
 #define ROD_AREA_THRESHOLD_LOW 1500
 #define ROD_AREA_THRESHOLD_UP 6000
@@ -58,9 +54,6 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
 
   Mat1b bw_work;
   bw.copyTo(bw_work);
-
-  show(bw_work, "bw");
-  waitKey(0);
 
   findContours(bw_work, contours, hierarchy, CV_RETR_TREE,
                CV_CHAIN_APPROX_NONE);
@@ -104,9 +97,6 @@ vector<Rod> buildTree(const Mat1b& bw, Mat1b& rois, bool withInvalid = false) {
       }
       // Draw each contour only for visualisation purposes
       drawContours(rois, contours, static_cast<int>(i), Scalar(255), 1, 8);
-
-      show(rois, "???");
-      waitKey(0);
     }
   }
 
@@ -151,11 +141,11 @@ void drawAxis(Mat& img,
 
 int main() {
   const char images[15][18] = {
- /*     "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
+      "./rods/TESI00.BMP", "./rods/TESI01.BMP", "./rods/TESI12.BMP",
       "./rods/TESI21.BMP", "./rods/TESI31.BMP", "./rods/Tesi33.bmp",
       "./rods/TESI44.BMP", "./rods/TESI47.BMP", "./rods/TESI48.BMP",
-      "./rods/TESI49.BMP", */"./rods/TESI50.BMP", "./rods/TESI51.BMP"};/*
-      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};*/
+      "./rods/TESI49.BMP", "./rods/TESI50.BMP", "./rods/TESI51.BMP",
+      "./rods/TESI90.BMP", "./rods/TESI92.BMP", "./rods/TESI98.BMP"};
 
   for (auto image : images) {
     if (strlen(image) == 0) {
@@ -410,15 +400,12 @@ int main() {
             }
           }
 
-          show(onlyOne, "flfllf");
+          // show(onlyOne, "flfllf");
 
           // draw the holes into the image (holes are background: black color)
           for (Hole hole : holes) {
             fillConvexPoly(onlyOne, hole.getContour(), Scalar(0));
           }
-
-          // Find contours works only if objects are far from each other
-          // one px of contour is not enough
 
           // Finally
           Mat1b nestedRoi;
