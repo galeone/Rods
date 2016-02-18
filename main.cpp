@@ -363,7 +363,8 @@ int main() {
         markers.convertTo(mark, CV_8UC1);
         bitwise_not(mark, mark);
 
-        // we don't need a classical usage of the watershed transform (that's
+        // we don't need a classical usage of the watershed transform
+        // (that's
         // colored)
         // we use watershed transfrom to segmentate objects. Thus, we set
         // foreground objects in white and background in black
@@ -399,8 +400,6 @@ int main() {
               }
             }
           }
-
-          // show(onlyOne, "flfllf");
 
           // draw the holes into the image (holes are background: black color)
           for (Hole hole : holes) {

@@ -26,7 +26,7 @@ Rod::Rod(vector<Point>& contour, Size size) {
     _eigen_val[i] = pca_analysis.eigenvalues.at<double>(0, i);
   }
 
-  // Store the orientation wrt the horizontal axis, modulus 18
+  // Store the orientation wrt the horizontal axis, modulus 180
   //(measured in degree)
   _angle = atan2(_eigen_vecs[0].y, _eigen_vecs[0].x) * 180 / CV_PI;
   _angle = fmod(_angle, 180);
@@ -102,11 +102,12 @@ vector<Point2i> Rod::getExtremesAtTheBarycenter() {
   fakeHierarchy.push_back(_contour);
   drawContours(rois, fakeHierarchy, 0, Scalar(255));
 
+  Point2i eigenPoint(static_cast<int>(_eigen_vecs[1].x * _eigen_val[1]),
+                     static_cast<int>(_eigen_vecs[1].y * _eigen_val[1]));
+
   for (int sign = -1, i = 0; i < 2; i++, sign += 2) {
     // p2 shows the direction along the minor axis
     float scale = 0.01;
-    Point2i eigenPoint(static_cast<int>(_eigen_vecs[1].x * _eigen_val[1]),
-                       static_cast<int>(_eigen_vecs[1].y * _eigen_val[1]));
 
     Point2i p2 = _center + sign * scale * eigenPoint;
 
