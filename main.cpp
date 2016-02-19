@@ -451,7 +451,9 @@ int main() {
       drawAxis(rois, center, p1, Scalar(255), 1);
     }
 
-    show(rois, string(image));
+    show(gray, "gray");
+    show(rois, "analysis");
+    waitKey(0);
   }
 
   waitKey(0);
