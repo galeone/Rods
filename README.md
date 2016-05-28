@@ -2,19 +2,19 @@
 
 Rods analyzes the images in the `rods` folder in order to extract:
 
-. type
-. baricenter
-. orientation
-. width
-. height
-. length
-. width at the baricenter
-. number of holes
+1. type
+2. baricenter
+3. orientation
+4. width
+5. height
+6. length
+7. width at the baricenter
+8. number of holes
 
 For every hole:
 
-. the center position
-. the diameter
+1. the center position
+2. the diameter
 
 This is a classic computer vision problem. The peculiarity is how the problem of the touching rods has been solved.
 
